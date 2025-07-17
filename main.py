@@ -1,80 +1,69 @@
+from data_loader import get_custom_universe as get_stock_universe
+
 from agents.buffett_agent import get_buffett_recommendations
 from agents.sentiment_agent import get_sentiment_recommendations
 from agents.dividend_agent import get_dividend_scores
 from agents.technical_agent import get_technical_picks
 from agents.growth_agent import get_growth_picks
+from agents.value_agent import get_value_picks
+from agents.momentum_agent import get_momentum_picks
+from agents.etf_agent import get_halal_etfs
 from agents.halal_agent import filter_halal
 
-from utils import execute_trade, get_portfolio_summary, send_telegram_message
-from data_loader import get_custom_universe
+from utils import execute_rebalance, send_telegram_message
 
-def run_hedge_fund():
-    print("🚀 Running AI Hedge Fund...\n")
+print("🚀 Running AI Hedge Fund...\n")
 
-    # === Load dynamic stock universe ===
-    universe = get_custom_universe(limit=100)
-    print(f"📦 Universe loaded: {len(universe)} stocks")
+# 1. Load & filter universe
+universe = get_stock_universe()
+print(f"📦 Universe loaded: {len(universe)} stocks")
 
-    # === Agent recommendations ===
-    buffett = get_buffett_recommendations()
-    sentiment = get_sentiment_recommendations()
-    dividends = get_dividend_scores(universe)
-    technical = get_technical_picks(universe)
-    growth = get_growth_picks(universe)
+halal_universe = filter_halal(universe)
+print(f"🕌 Halal-compliant stocks: {len(halal_universe)}")
 
-    print("📊 Buffett Picks:", buffett)
-    print("💬 Sentiment Picks:", sentiment)
-    print("🪙 Dividend Picks:", list(dividends.keys()))
-    print("📉 Technical Picks:", technical)
-    print("📈 Growth Picks:", growth)
+# 2. Get agent recommendations
+print("🧠 Running agents...\n")
 
-    # === Voting System: score stocks across agents ===
-    vote_count = {}
+buffett = get_buffett_recommendations(halal_universe)
+print(f"📊 Buffett Picks: {buffett}")
 
-    def add_votes(symbols, weight=1):
-        for symbol in symbols:
-            vote_count[symbol] = vote_count.get(symbol, 0) + weight
+sentiment = get_sentiment_recommendations(halal_universe)
+print(f"💬 Sentiment Picks: {sentiment}")
 
-    add_votes(buffett, weight=1)
-    add_votes(sentiment, weight=1)
-    add_votes(dividends.keys(), weight=1)
-    add_votes(technical, weight=1)
-    add_votes(growth, weight=1)
+dividends = get_dividend_scores(halal_universe)
+print(f"🪙 Dividend Picks: {dividends}")
 
-    # Select stocks with 2 or more votes
-    consensus = {symbol for symbol, votes in vote_count.items() if votes >= 2}
-    print("\n🗳️ Voted Consensus Picks (3+ votes):", consensus)
+technical = get_technical_picks(halal_universe)
+print(f"📉 Technical Picks: {technical}")
 
-    if not consensus:
-        print("⚠️ No consensus picks between agents this round.")
-        return
+growth = get_growth_picks(halal_universe)
+print(f"📈 Growth Picks: {growth}")
 
-    # === Apply Halal Filter ===
-    halal_consensus = filter_halal(consensus)
-    print("\n🕌 Halal-Filtered Consensus Picks:", halal_consensus)
+value = get_value_picks(halal_universe)
+print(f"💰 Value Picks: {value}")
 
-    if not halal_consensus:
-        print("⚠️ No halal stocks in consensus.")
-        return
+momentum = get_momentum_picks(halal_universe)
+print(f"⚡ Momentum Picks: {momentum}")
 
-    # === Execute Paper Trades ===
-    print("\n📈 Executing Paper Trades...")
-    for stock in halal_consensus:
-        score = dividends.get(stock, "N/A")
-        print(f"➡️ Buying 1 share of {stock} (Dividend Score: {score})")
-        execute_trade(stock, qty=1, side='buy')
+etfs = get_halal_etfs()
+print(f"📦 Halal ETFs: {etfs}")
 
-    # === Send Telegram Alert ===
-    alert = "📢 AI Hedge Fund Picks:\n" + '\n'.join([f"- {s}" for s in halal_consensus])
-    send_telegram_message(alert)
+# 3. Voting system
+agent_votes = {}
+agents = [buffett, sentiment, dividends, technical, growth, value, momentum, etfs]
 
-    # === Portfolio Summary ===
-    print("\n📊 Portfolio Summary:")
-    portfolio = get_portfolio_summary()
-    for item in portfolio:
-        print(
-            f"{item['Symbol']}: {item['Quantity']} shares | Buy @ ${item['Buy Price']} → Now @ ${item['Current Price']} | Change: {item['Change %']}%"
-        )
+for agent_output in agents:
+    for symbol in agent_output:
+        agent_votes[symbol] = agent_votes.get(symbol, 0) + 1
 
-if __name__ == "__main__":
-    run_hedge_fund()
+# 4. Consensus (2+ votes)
+consensus = [symbol for symbol, votes in agent_votes.items() if votes >= 2]
+
+print(f"\n🤝 Consensus Picks: {consensus if consensus else 'None'}")
+
+# 5. Rebalance + Notify
+if consensus:
+    send_telegram_message(f"🤖 Rebalancing with: {', '.join(consensus)}")
+    execute_rebalance(consensus)
+else:
+    send_telegram_message("⚠️ No consensus picks for this round.")
