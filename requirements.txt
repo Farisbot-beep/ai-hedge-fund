@@ -1,0 +1,3 @@
+openai
+alpaca-trade-api
+yfinance
